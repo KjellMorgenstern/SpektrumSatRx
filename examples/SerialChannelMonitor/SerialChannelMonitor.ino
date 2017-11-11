@@ -1,5 +1,5 @@
 // Confirmed working on Arduino Pro Mini 328 5V 16Mhz
-// Arduino Pro Mini 328 3.3V 8Mhz is not fast enough 
+// Arduino Pro Mini 328 3.3V 8Mhz is not fast enough
 // to capture the serial stream correctly
 // RXCENTER 511
 // RXTRAVEL 358 // (511 center - 63 trim) / 125 maxTravel
@@ -11,16 +11,21 @@
 
 #define ledPin 13
 SatelliteReceiver Rx;
+Servo myservo;
 
 void setup(){
   pinMode(ledPin, OUTPUT);
   Serial.begin(115200);
+  Serial3.begin(115200);
+  myservo.attach(9);  // attaches the servo on pin 9 to the servo object
 }
 
 void loop()
 {
   Rx.getFrame();
 
+  Serial.print(Rx.getErrors());
+  Serial.print(" ");
   Serial.print(Rx.getAile());
   Serial.print(" ");
   Serial.print(Rx.getElev());
@@ -36,11 +41,11 @@ void loop()
   Serial.print(Rx.getAux2());
   Serial.print(" ");
   Serial.println();
-  
+
   if(Rx.getGear() > RXCENTER) {
   	digitalWrite(ledPin,1);
+  } else {
+    digitalWrite(ledPin,0);
   }
-  else {digitalWrite(ledPin,0);
-  }
-  
+
 }

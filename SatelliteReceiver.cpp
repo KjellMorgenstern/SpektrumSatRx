@@ -9,44 +9,107 @@
 // The preamble byte vary between Rx
 // The first byte is number of errors and maxs out at FF
 // The second byte is the bind type
-// 01 == DSM2 1024/22ms
-// A2 == DSMX 22ms
+// 0x01 22ms 1024 DSM2
+// 0x12 11ms 2048 DSM2
+// 0xa2 22ms 2048 DSMS
+// 0xb2 11ms 2048 DSMX
+
+void SatelliteReceiver::setup(void){
+  Serial3.begin(115200);
+  pinMode(DSM_POWER_PIN, OUTPUT);
+  digitalWrite(DSM_POWER_PIN, HIGH);
+}
+
+void SatelliteReceiver::reset(void){
+  digitalWrite(DSM_POWER_PIN, LOW);
+  delay(1);
+  frameDrops = 0;
+  digitalWrite(DSM_POWER_PIN, HIGH);
+  delay(1);
+}
 
 void SatelliteReceiver::getFrame(void){
-  while(Serial.available() > 16)
-  {
-    for(index = 0; index <= 15; index++)
-    {
-      inByte = Serial.read();
-      inData[index] = inByte;
+  if (not Serial3.available()) {
+    if (millis() - timer > 1000) {
+      // Serial.print("Reset after timeout. ");
+      reset();
     }
-  }  
+    delay(1);
+  }
+
+  // if (Serial3.available() >= 32) {
+  //   Serial.print("Dropping frames.\n");
+  //   while(Serial3.available() >= 32) Serial3.read();
+  // }
+
+  while(Serial3.available() > 16)
+  {
+  	frameDrops = Serial3.read(); //
+    bindType = Serial3.read();
+    while (bindType != 0x12 && bindType != 0xa2 && bindType != 0xb2) {
+      // Serial.print("Invalid bind type: ");
+      // Serial.print(bindType);
+      // Serial.print("\n");
+
+      bindType = Serial3.read();
+      return;
+    }
+    // Serial.print("Bind type: ");
+    // Serial.print(bindType);
+    // Serial.print("\n");
+
+    for (int i = 0; i<7; ++i) {
+      inByte = Serial3.read();
+      // Serial.print(" ");
+      // Serial.print(inByte);
+      index = (inByte & 0b01111000) >> 3;
+      if (index < DSM_MAX_CHANNELS) {
+        channels[index] = (inByte & 0b00000111) * 256 + Serial3.read();
+      } else {
+        // Serial.print("Invalid channel. ");
+        return;
+      }
+    }
+    Serial.print("\n");
+    timer = millis();
+  }
 }
 
+
 int SatelliteReceiver::getErrors(){
-	return inData[0];
-}	
+	return frameDrops;
+}
 int SatelliteReceiver::getBindType(){
-	return inData[1];
+	return bindType;
 }
 int SatelliteReceiver::getAile(){
-	return inData[2] * 256 + inData[3] - 1 * 1024;
+	return channels[AILE] - AILE_CENTER;
 }
 int SatelliteReceiver::getFlap(){
-	return inData[4] * 256 + inData[5] - 5 * 1024;
+
+	return channels[FLAP] >> 8 & 0b00000011;
 }
-int SatelliteReceiver::getGear(){
-	return inData[6] * 256 + inData[7] - 4 * 1024;
+int SatelliteReceiver::getMode(){
+	return channels[MODE] >> 8 & 0b00000011;
 }
 int SatelliteReceiver::getElev(){
-	return inData[8] * 256 + inData[9] - 2 * 1024;
+	return channels[ELEVATOR] - ELEVATOR_CENTER;
 }
-int SatelliteReceiver::getAux2(){
-	return inData[10] * 256 + inData[11] - 6 * 1024;
+int SatelliteReceiver::getArm(){
+	return channels[ARM];
 }
 int SatelliteReceiver::getThro(){
-	return inData[12] * 256 + inData[13] - 0 * 1024;
+	return channels[THROTTLE] - THROTTLE_CENTER;
 }
 int SatelliteReceiver::getRudd(){
-	return inData[14] * 256 + inData[15] - 3 * 1024;
+	return channels[RUDDER] - RUDDER_CENTER;
+}
+
+bool SatelliteReceiver::isArmed(){
+	const int ARMED_THRESHOLD = -800;
+	return getThro() > ARMED_THRESHOLD;
+}
+
+bool SatelliteReceiver::isConnected(){
+	return millis() - timer < 100;
 }
